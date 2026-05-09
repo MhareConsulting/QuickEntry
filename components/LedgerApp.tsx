@@ -10,6 +10,7 @@ import {
   categoryBadgeClass,
   categoryLabel,
 } from "@/lib/domain/categories";
+import { downloadCashbookPdf } from "@/lib/export/cashbookPdf";
 
 type LedgerAppProps = {
   userEmail: string | null;
@@ -234,91 +235,20 @@ export function LedgerApp({ userEmail }: LedgerAppProps) {
     window.location.href = "/login";
   }
 
-  async function exportFilteredXlsx() {
+  function exportFilteredPdf() {
     if (!withBal.length) {
       showToast("Nothing to export for the current filters");
       return;
     }
-    const mod = await import("@linways/table-to-excel");
-    const TableToExcel = mod.default;
-    const table = document.createElement("table");
-    table.id = "hidden-export-table";
-    table.style.display = "none";
-
-    const thead = document.createElement("thead");
-    const hr = document.createElement("tr");
-    const headers = [
-      "Date",
-      "Description",
-      "Category",
-      "Receipts",
-      "Payments",
-      "Balance",
-    ];
-    headers.forEach((h) => {
-      const th = document.createElement("th");
-      th.textContent = h;
-      hr.appendChild(th);
+    downloadCashbookPdf({
+      rows: withBal,
+      generatedByEmail: userEmail ?? null,
+      organizationLine:
+        typeof process.env.NEXT_PUBLIC_REPORT_ORG === "string"
+          ? process.env.NEXT_PUBLIC_REPORT_ORG
+          : undefined,
     });
-    thead.appendChild(hr);
-    table.appendChild(thead);
-
-    const tbody = document.createElement("tbody");
-    for (const row of withBal) {
-      const tr = document.createElement("tr");
-
-      const tdDate = document.createElement("td");
-      tdDate.textContent = row.txn_date;
-      tdDate.setAttribute("data-t", "d");
-      tr.appendChild(tdDate);
-
-      const tdDesc = document.createElement("td");
-      tdDesc.textContent = row.description;
-      tr.appendChild(tdDesc);
-
-      const tdCat = document.createElement("td");
-      tdCat.textContent = categoryLabel(row.category);
-      tr.appendChild(tdCat);
-
-      const tdIn = document.createElement("td");
-      if (row.type === "in") {
-        tdIn.textContent = String(row.amount_cents / 100);
-        tdIn.setAttribute("data-t", "n");
-        tdIn.setAttribute("data-num-fmt", "#,##0.00");
-      }
-      tr.appendChild(tdIn);
-
-      const tdOut = document.createElement("td");
-      if (row.type === "out") {
-        tdOut.textContent = String(row.amount_cents / 100);
-        tdOut.setAttribute("data-t", "n");
-        tdOut.setAttribute("data-num-fmt", "#,##0.00");
-      }
-      tr.appendChild(tdOut);
-
-      const tdBal = document.createElement("td");
-      tdBal.textContent = String(row.running_balance_cents / 100);
-      tdBal.setAttribute("data-t", "n");
-      tdBal.setAttribute("data-num-fmt", "#,##0.00");
-      tr.appendChild(tdBal);
-
-      tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
-
-    document.body.appendChild(table);
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    try {
-      TableToExcel.convert(table, {
-        name: `quickentry-${stamp}.xlsx`,
-        sheet: { name: "Cashbook Ledger" },
-      });
-    } finally {
-      window.setTimeout(() => {
-        table.remove();
-      }, 500);
-    }
-    showToast("Export started");
+    showToast("PDF download started");
   }
 
   return (
@@ -403,14 +333,16 @@ export function LedgerApp({ userEmail }: LedgerAppProps) {
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              onClick={() =>
-                exportFilteredXlsx().catch(() =>
-                  showToast("Export failed"),
-                )
-              }
+              onClick={() => {
+                try {
+                  exportFilteredPdf();
+                } catch {
+                  showToast("Export failed");
+                }
+              }}
               disabled={!supabaseReady || loading}
             >
-              Export Excel
+              Export PDF
             </button>
             <button
               type="button"
@@ -424,8 +356,8 @@ export function LedgerApp({ userEmail }: LedgerAppProps) {
         </div>
 
         <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
-          Tip: Export regularly — it doubles as backup. Amounts stay exact using
-          cent precision in Postgres.
+          Tip: Export a PDF regularly — it doubles as backup. Amounts stay exact
+          using cent precision in Postgres.
         </p>
 
         <div className="fbar">
