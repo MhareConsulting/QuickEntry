@@ -2,15 +2,15 @@
 
 import { Suspense, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 function LoginForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const authError = searchParams.get("error");
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "err">(
-    "idle",
-  );
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<"idle" | "signingIn" | "err">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
   const supabaseConfigured =
@@ -26,46 +26,40 @@ function LoginForm() {
       setMessage("Supabase environment variables are not set.");
       return;
     }
-    setStatus("sending");
+    setStatus("signingIn");
     setMessage(null);
     const supabase = createClient();
-    const origin = window.location.origin;
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
-      options: {
-        emailRedirectTo: `${origin}/auth/callback`,
-      },
+      password,
     });
     if (error) {
       setStatus("err");
       setMessage(error.message);
       return;
     }
-    setStatus("sent");
-    setMessage("Check your email for the sign-in link.");
+    router.refresh();
+    router.replace("/");
   }
 
   return (
     <div className="login-card">
       <h1>QuickEntry</h1>
-      <p>Sign in with a magic link. No password required.</p>
+      <p>Sign in with the email and password set for your account in Supabase.</p>
       {authError === "auth" ? (
-        <p className="login-msg">Sign-in failed. Request a new link.</p>
+        <p className="login-msg">Could not complete sign-in. Try again.</p>
       ) : null}
       {!supabaseConfigured ? (
         <p className="login-msg">
           Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-          <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in{" "}
-          <code>.env.local</code>.
+          <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> on Vercel (or{" "}
+          <code>.env.local</code> locally).
         </p>
       ) : null}
       {status === "err" && message ? (
         <p className="login-msg">{message}</p>
       ) : null}
-      {status === "sent" && message ? (
-        <p style={{ fontSize: 12, color: "var(--success-tx)" }}>{message}</p>
-      ) : null}
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={(e) => void handleSubmit(e)}>
         <label className="fl" htmlFor="email">
           Email
         </label>
@@ -78,15 +72,29 @@ function LoginForm() {
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="email"
           placeholder="you@company.com"
-          disabled={status === "sending" || !supabaseConfigured}
+          disabled={status === "signingIn" || !supabaseConfigured}
+        />
+        <label className="fl" htmlFor="password" style={{ marginTop: 10 }}>
+          Password
+        </label>
+        <input
+          id="password"
+          type="password"
+          className="fi"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          placeholder="Your password"
+          disabled={status === "signingIn" || !supabaseConfigured}
         />
         <button
           type="submit"
           className="btn btn-primary"
           style={{ marginTop: 14, width: "100%" }}
-          disabled={status === "sending" || !supabaseConfigured}
+          disabled={status === "signingIn" || !supabaseConfigured}
         >
-          {status === "sending" ? "Sending…" : "Email magic link"}
+          {status === "signingIn" ? "Signing in…" : "Sign in"}
         </button>
       </form>
     </div>
